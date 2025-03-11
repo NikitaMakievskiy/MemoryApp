@@ -1,6 +1,8 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from textblob import TextBlob
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+import os
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:745969mak@localhost/memories_db?client_encoding=utf8'
@@ -12,15 +14,48 @@ class Memory(db.Model):
     text = db.Column(db.Text, nullable=False)
     sentiment = db.Column(db.Float, nullable=False)
 
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
 # Создание базы данных
 with app.app_context():
     db.create_all()
 
+# Главная страница
+@app.route('/')
+def index():
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Поделись воспоминанием</title>
+    </head>
+    <body>
+        <h1>Поделись своим воспоминанием</h1>
+        <form action="/memories" method="post" enctype="multipart/form-data">
+            <textarea name="text" rows="4" cols="50" placeholder="Введите ваше воспоминание..."></textarea><br>
+            <button type="submit">Отправить</button>
+        </form>
+    </body>
+    </html>
+    '''
+
 # API для загрузки воспоминаний
 @app.route('/memories', methods=['POST'])
 def add_memory():
-    data = request.get_json()
-    text = data.get('text')
+    if request.content_type == 'application/json':
+        data = request.get_json()
+        text = data.get('text')
+    else:
+        text = request.form.get('text')
     
     if not text:
         return jsonify({'error': 'Text is required'}), 400
@@ -32,16 +67,14 @@ def add_memory():
     
     return jsonify({'message': 'Memory added!', 'sentiment': sentiment}), 201
 
+
 # API для получения всех воспоминаний
 @app.route('/memories', methods=['GET'])
 def get_memories():
     memories = Memory.query.all()
     return jsonify([{'id': m.id, 'text': m.text, 'sentiment': m.sentiment} for m in memories])
 
-# Главная страница
-@app.route('/')
-def home():
-    return "Hello, World!"  # Ответ на запрос к главной странице
+
 
 if __name__ == '__main__':
     app.run(debug=True)
